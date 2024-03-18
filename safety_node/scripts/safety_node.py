@@ -25,17 +25,36 @@ class SafetyNode(Node):
 
         NOTE that the x component of the linear velocity in odom is the speed
         """
-        self.speed = 0.
+
+        self.speed = 0.0
         # TODO: create ROS subscribers and publishers.
+
+        # Create Publisher for emergency braking
+        self.publisher_drive = self.create_publisher(AckermannDriveStamped, '/drive', 10)
+
+        # Create Subscription to get odom and sensor data
+        self.subscription_odom = self.create_subscription(Odometry, '/ego_racecar/odom', self.odom_callback, 10)
+        self.subscription_scan = self.create_subscription(LaserScan, '/scan', self.scan_callback, 10)
 
     def odom_callback(self, odom_msg):
         # TODO: update current speed
-        self.speed = 0.
+        self.speed = odom_msg.twist.twist.linear.x
 
     def scan_callback(self, scan_msg):
         # TODO: calculate TTC
-        
-        # TODO: publish command to brake
+        ranges = scan_msg.ranges
+        angles = np.arange(scan_msg.angle_min, scan_msg.angle_max, scan_msg.angle_increment)
+        for distance, angle in zip(ranges, angles):
+            range_rate = self.speed * np.cos(angle)
+            if range_rate <= 0: # No need to calculate TTC
+                continue
+            TTC = distance / range_rate
+            if TTC <= 2:
+                # TODO: publish command to brake
+                msg = AckermannDriveStamped()
+                msg.drive.speed = 0.0
+                self.get_logger().info('AEB Engaged')
+                self.publisher_drive.publish(msg)
         pass
 
 def main(args=None):
